@@ -11,7 +11,7 @@ import java.util.Map;
 
 public class DatabaseManager {
 
-    private static final String URL = "jdbc:mysql://localhost:3306/pokedex";
+    private static final String URL = "jdbc:mysql://localhost:3308/pokedex";
     private static final String USER = "root";
     private static final String PASSWORD = "root";
 
@@ -44,10 +44,14 @@ public class DatabaseManager {
             pstmt.setString(1, username);
             pstmt.setString(2, hashPassword(password));
             return pstmt.executeUpdate() > 0;
-        } catch (SQLException e) { return false; }
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     public int authenticateUser(String username, String password) {
+        // Updated to match your exported schema
         String query = "SELECT user_id FROM users WHERE username = ? AND password_hash = ?";
         try (Connection conn = getConnection();
              PreparedStatement pstmt = conn.prepareStatement(query)) {
@@ -55,7 +59,9 @@ public class DatabaseManager {
             pstmt.setString(2, hashPassword(password));
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) return rs.getInt("user_id");
-        } catch (SQLException e) { e.printStackTrace(); }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
         return -1;
     }
 

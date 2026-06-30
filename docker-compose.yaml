@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.3.0
+    container_name: pokedex_mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: pokedex
+    ports:
+      - "3308:3306"
+    volumes:
+      # This line tells Docker to run your init.sql file automatically
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    restart: unless-stopped
