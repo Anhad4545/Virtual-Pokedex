@@ -1,5 +1,4 @@
 package org.example;
-
 public class Pokemon {
     private int id;
     private String name;
@@ -12,7 +11,6 @@ public class Pokemon {
     private int speed;
     private double height;
     private double weight;
-
     public Pokemon(int id, String name, String type1, String type2, String description,
                    int hp, int attack, int defense, int speed, double height, double weight) {
         this.id = id;
@@ -27,7 +25,6 @@ public class Pokemon {
         this.height = height;
         this.weight = weight;
     }
-
     public int getId() { return id; }
     public String getName() { return name; }
     public String getType1() { return type1; }

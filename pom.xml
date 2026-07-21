@@ -27,5 +27,13 @@
             <artifactId>flatlaf</artifactId>
             <version>3.4</version>
         </dependency>
+        <!-- HikariCP: high-performance JDBC connection pool.
+             Eliminates per-query connection overhead for efficient lookups
+             across the 1000+ entity Pokémon schema. -->
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>5.1.0</version>
+        </dependency>
     </dependencies>
 </project>
