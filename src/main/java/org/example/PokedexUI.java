@@ -38,6 +38,7 @@ public class PokedexUI extends JFrame {
     private int              currentResultIndex = -1;
     private int              loggedInUserId     = -1;
     private String           loggedInUsername   = "";
+    private SwingWorker<ImageIcon, Void> imageWorker;
     public PokedexUI() {
         db = new DatabaseManager();
         if (!promptAuthentication()) System.exit(0);
@@ -335,7 +336,11 @@ public class PokedexUI extends JFrame {
         }.execute();
     }
     private void loadImageAsync(int id) {
-        new SwingWorker<ImageIcon, Void>() {
+        if (imageWorker != null && !imageWorker.isDone()) {
+            imageWorker.cancel(true);
+        }
+        imageLabel.setIcon(null);
+        imageWorker = new SwingWorker<>() {
             @Override
             protected ImageIcon doInBackground() throws Exception {
                 URL url = new URL("https://raw.githubusercontent.com/poketwo/data/master/images/" + id + ".png");
@@ -344,10 +349,12 @@ public class PokedexUI extends JFrame {
             }
             @Override
             protected void done() {
+                if (isCancelled()) return;
                 try { imageLabel.setIcon(get()); }
                 catch (Exception ignored) { imageLabel.setIcon(null); }
             }
-        }.execute();
+        };
+        imageWorker.execute();
     }
     private void triggerDebounce(Timer timer) {
         if (timer.isRunning()) timer.restart();
@@ -477,7 +484,7 @@ public class PokedexUI extends JFrame {
         Map<String, Integer> typeDist = db.getTeamTypeDistributionMap(selected.getId());
         JPanel typePanel = buildTypeCoveragePanel(typeDist);
         JButton removeBtn     = new JButton("Remove Selected");
-        JButton cloneBtn      = new JButton("Clone Team (ACID)");
+        JButton cloneBtn      = new JButton("Duplicate Team");
         cloneBtn.setBackground(new Color(40, 140, 200));
         cloneBtn.setForeground(Color.WHITE);
         JButton deleteTeamBtn = new JButton("Delete Team");
@@ -488,32 +495,50 @@ public class PokedexUI extends JFrame {
         btnPanel.add(removeBtn);
         btnPanel.add(cloneBtn);
         btnPanel.add(deleteTeamBtn);
+        JPanel analyticsWrapper = new JPanel(new BorderLayout());
+        analyticsWrapper.setBackground(BG_DARK);
+        analyticsWrapper.add(buildAnalyticsPanel(stats));
+        JPanel typeWrapper = new JPanel(new BorderLayout());
+        typeWrapper.setBackground(BG_DARK);
+        typeWrapper.add(buildTypeCoveragePanel(typeDist));
+        JLabel rosterSectionLbl = sectionLabel("ROSTER  (" + members.size() + "/6)");
         JPanel center = new JPanel();
         center.setLayout(new BoxLayout(center, BoxLayout.Y_AXIS));
         center.setBackground(BG_DARK);
-        center.add(sectionLabel("ROSTER  (" + members.size() + "/6)"));
+        center.add(rosterSectionLbl);
         center.add(scroll);
         center.add(sectionLabel("TEAM ANALYTICS"));
-        center.add(analyticsPanel);
+        center.add(analyticsWrapper);
         center.add(sectionLabel("TYPE COVERAGE"));
-        center.add(typePanel);
+        center.add(typeWrapper);
         dialog.add(center, BorderLayout.CENTER);
         dialog.add(btnPanel, BorderLayout.SOUTH);
         removeBtn.addActionListener(e -> {
             Pokemon sel = rosterList.getSelectedValue();
             if (sel != null && db.removePokemonFromTeam(selected.getId(), sel.getId())) {
                 listModel.removeElement(sel);
+                rosterSectionLbl.setText("  ROSTER  (" + listModel.size() + "/6)");
+                DatabaseManager.TeamAnalytics fresh = db.getTeamAnalytics(selected.getId());
+                analyticsWrapper.removeAll();
+                analyticsWrapper.add(buildAnalyticsPanel(fresh));
+                analyticsWrapper.revalidate();
+                analyticsWrapper.repaint();
+                Map<String, Integer> freshDist = db.getTeamTypeDistributionMap(selected.getId());
+                typeWrapper.removeAll();
+                typeWrapper.add(buildTypeCoveragePanel(freshDist));
+                typeWrapper.revalidate();
+                typeWrapper.repaint();
             }
         });
         cloneBtn.addActionListener(e -> {
-            String newName = JOptionPane.showInputDialog(dialog, "Enter name for cloned team:", selected.getName() + " Copy");
+            String newName = JOptionPane.showInputDialog(dialog, "Enter a name for the duplicated team:", selected.getName() + " Copy");
             if (newName != null && !newName.trim().isEmpty()) {
                 if (db.duplicateTeamTransaction(loggedInUserId, selected.getId(), newName.trim())) {
-                    JOptionPane.showMessageDialog(dialog, "Team cloned in an atomic ACID transaction!", "Transaction Committed", JOptionPane.INFORMATION_MESSAGE);
+                    JOptionPane.showMessageDialog(dialog, "Team duplicated successfully!", "Done", JOptionPane.INFORMATION_MESSAGE);
                     dialog.dispose();
                     refreshTeamDropdown();
                 } else {
-                    JOptionPane.showMessageDialog(dialog, "Transaction failed & rolled back.", "Transaction Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(dialog, "Could not duplicate team — name may already exist.", "Error", JOptionPane.ERROR_MESSAGE);
                 }
             }
         });
@@ -610,32 +635,54 @@ public class PokedexUI extends JFrame {
         dialog.add(scroll, BorderLayout.CENTER);
         Runnable fetch = () -> {
             String selected = (String) statCombo.getSelectedItem();
-            List<Pokemon> top = db.getTopPokemonByStat(selected, 10);
             listPanel.removeAll();
-            int rank = 1;
-            for (Pokemon p : top) {
-                JPanel row = new JPanel(new BorderLayout());
-                row.setOpaque(false);
-                row.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
-                JLabel nameLbl = new JLabel(rank + ". " + p.getName());
-                nameLbl.setForeground(Color.WHITE);
-                nameLbl.setFont(new Font("Arial", Font.BOLD, 14));
-                String val = "";
-                if (selected.equals("HP")) val = String.valueOf(p.getHp());
-                else if (selected.equals("Attack")) val = String.valueOf(p.getAttack());
-                else if (selected.equals("Defense")) val = String.valueOf(p.getDefense());
-                else if (selected.equals("Speed")) val = String.valueOf(p.getSpeed());
-                else if (selected.equals("Weight")) val = String.valueOf(p.getWeight()) + " kg";
-                JLabel valLbl = new JLabel(val);
-                valLbl.setForeground(new Color(80, 220, 100));
-                valLbl.setFont(new Font("Arial", Font.BOLD, 14));
-                row.add(nameLbl, BorderLayout.WEST);
-                row.add(valLbl, BorderLayout.EAST);
-                listPanel.add(row);
-                rank++;
-            }
+            JLabel loading = new JLabel("Loading...", SwingConstants.CENTER);
+            loading.setForeground(Color.LIGHT_GRAY);
+            listPanel.add(loading);
             listPanel.revalidate();
             listPanel.repaint();
+            new SwingWorker<List<Pokemon>, Void>() {
+                @Override
+                protected List<Pokemon> doInBackground() {
+                    return db.getTopPokemonByStat(selected, 10);
+                }
+                @Override
+                protected void done() {
+                    try {
+                        List<Pokemon> top = get();
+                        listPanel.removeAll();
+                        int rank = 1;
+                        for (Pokemon p : top) {
+                            JPanel row = new JPanel(new BorderLayout());
+                            row.setOpaque(false);
+                            row.setBorder(BorderFactory.createEmptyBorder(10, 15, 10, 15));
+                            JLabel nameLbl = new JLabel(rank + ". " + p.getName());
+                            nameLbl.setForeground(Color.WHITE);
+                            nameLbl.setFont(new Font("Arial", Font.BOLD, 14));
+                            String val = "";
+                            if (selected.equals("HP")) val = String.valueOf(p.getHp());
+                            else if (selected.equals("Attack")) val = String.valueOf(p.getAttack());
+                            else if (selected.equals("Defense")) val = String.valueOf(p.getDefense());
+                            else if (selected.equals("Speed")) val = String.valueOf(p.getSpeed());
+                            else if (selected.equals("Weight")) val = String.valueOf(p.getWeight()) + " kg";
+                            JLabel valLbl = new JLabel(val);
+                            valLbl.setForeground(new Color(80, 220, 100));
+                            valLbl.setFont(new Font("Arial", Font.BOLD, 14));
+                            row.add(nameLbl, BorderLayout.WEST);
+                            row.add(valLbl, BorderLayout.EAST);
+                            listPanel.add(row);
+                            rank++;
+                        }
+                    } catch (Exception ex) {
+                        listPanel.removeAll();
+                        JLabel err = new JLabel("Failed to load data.", SwingConstants.CENTER);
+                        err.setForeground(new Color(220, 80, 80));
+                        listPanel.add(err);
+                    }
+                    listPanel.revalidate();
+                    listPanel.repaint();
+                }
+            }.execute();
         };
         statCombo.addActionListener(e -> fetch.run());
         fetch.run();

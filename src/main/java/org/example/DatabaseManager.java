@@ -6,9 +6,9 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.*;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 public class DatabaseManager {
     private static volatile HikariDataSource dataSource;
     private static synchronized HikariDataSource getPool() throws SQLException {
@@ -34,7 +34,7 @@ public class DatabaseManager {
     private Connection getConnection() throws SQLException {
         return getPool().getConnection();
     }
-    private final Map<Integer, Pokemon> pokemonCache = new HashMap<>();
+    private final Map<Integer, Pokemon> pokemonCache = new ConcurrentHashMap<>();
     private String hashPassword(String password) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
